@@ -195,6 +195,7 @@ function openForm(rec, flags = {}, editing = false) {
   editingAt = editing ? rec.at : null;
   $('#formTitle').textContent = editing ? '記録を編集' : '読み取り結果の確認';
   $('#f_at').value = rec.at || '';
+  $('#f_at').classList.toggle('flag', !rec.at);   // 測定日時が空なら目立たせる
   $('#f_memo').value = rec.memo || '';
   document.querySelectorAll('#form input[data-key]').forEach(inp => {
     const k = inp.dataset.key, v = rec.values?.[k];
@@ -219,7 +220,7 @@ $('#cancelBtn').onclick = () => { $('#form').hidden = true; };
 $('#form').onsubmit = e => {
   e.preventDefault();
   const at = $('#f_at').value;
-  if (!at) return;
+  if (!at) { alert('測定日時を入力してください。'); $('#f_at').focus(); return; }
   const values = {};
   document.querySelectorAll('#form input[data-key]').forEach(inp => {
     if (inp.value !== '') values[inp.dataset.key] = Number(inp.value);
@@ -278,11 +279,10 @@ $('#photo').onchange = async e => {
   try {
     const res = await readSheet(file, { height: goals.height, onProgress: setProgress });
     setProgress(1, '読み取り完了');
-    const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     const flags = { ...res.flags };
-    const rec = { at: res.at || d.toISOString().slice(0, 16), values: Object.fromEntries(Object.entries(res.values).filter(([, v]) => v != null)), ranges: {} };
+    const rec = { at: res.at || '', values: Object.fromEntries(Object.entries(res.values).filter(([, v]) => v != null)), ranges: {} };
     openForm(rec, flags, false);
-    if (!res.at) $('#formHint').textContent = '測定日時が読み取れなかったので、今の日時を入れています。日付を直してください。' + $('#formHint').textContent;
+    if (!res.at) $('#formHint').textContent = '測定日時が読み取れなかったので、用紙を見て日付を入力してください。' + $('#formHint').textContent;
     else if (flags._at) $('#formHint').textContent = '測定日時の年を読み違えたようなので直しました。日付を確認してください。' + $('#formHint').textContent;
   } catch (err) {
     console.error(err);
