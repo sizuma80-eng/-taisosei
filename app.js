@@ -302,7 +302,27 @@ async function runOcr(canvas, lang, whitelist, base, span, text) {
 
 const SEG_HEAD = /S[a-z]*m[a-z]*tal|部位別/i;
 
-function parseSheet(jpnLines, engLines, height) {
+// 指定した高さの行で、右側の数値を「切り出し位置をずらして読む→多数決」で決める
+async function readBarValue(canvas, y, f) {
+  const w = await Tesseract.createWorker('eng', 1, { workerPath: 'lib/worker.min.js', corePath: 'lib/', langPath: 'lib/lang/', gzip: true });
+  await w.setParameters({ tessedit_char_whitelist: '0123456789.', tessedit_pageseg_mode: '7' });
+  const votes = new Map(), S = 3;
+  try {
+    for (let sx = 420; sx <= 1000; sx += 12) {
+      const x0 = sx, x1 = Math.min(canvas.width, sx + 150), y0 = Math.round(y - 12), y1 = Math.round(y + 34);
+      if (x1 - x0 < 90) break;
+      const c = document.createElement('canvas'); c.width = (x1 - x0) * S; c.height = (y1 - y0) * S;
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(canvas, x0, y0, x1 - x0, y1 - y0, 0, 0, c.width, c.height);
+      const t = (await w.recognize(c)).data.text.trim();
+      if (/^\d{2,3}\.\d$/.test(t) && +t >= f.min && +t <= f.max) votes.set(t, (votes.get(t) || 0) + 1);
+    }
+  } finally { await w.terminate(); }
+  const best = [...votes].sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] >= 2 ? +best[0] : null;
+}
+
+async function parseSheet(jpnLines, engLines, height, canvas) {
   // 日本語側: 行ごとに文字→単語の対応をつくる
   const L = jpnLines.map(l => {
     let text = ''; const owner = [];
@@ -336,7 +356,8 @@ function parseSheet(jpnLines, engLines, height) {
     outer: for (const l of L) {
       for (const m of l.text.matchAll(new RegExp(f.label.source, 'g'))) {
         const end = m.index + m[0].length, x1 = l.owner[end - 1].bbox.x1;
-        if (!anchor) anchor = { x: x1, y: l.cy, h: l.h };
+        const ob = l.owner[m.index].bbox, wy = ob.y1 - ob.y0 < 70 ? (ob.y0 + ob.y1) / 2 : l.cy;   // 文字単位の高さ（写真が傾いていても行を特定しやすい）
+        if (!anchor) anchor = { x: x1, y: l.cy, h: l.h, wy };
         for (const nm of l.text.slice(end).matchAll(/\d+(?:\.\d+)?/g)) {
           const st = l.owner[end + nm.index].bbox.x0;
           if (st - x1 > 450) break;
@@ -345,7 +366,7 @@ function parseSheet(jpnLines, engLines, height) {
           if (!okRange(f, v) && f.dec > 0) {                 // 余分な記号が先頭に混ざった読み（例: 812.6）は後ろの桁を採用
             for (let i = 1; i < nm[0].indexOf('.'); i++) { const t = parseFloat(nm[0].slice(i)); if (okRange(f, t)) { v = t; trimmed = true; break; } }
           }
-          if (okRange(f, v)) { a = v; anchor = { x: x1, y: l.cy, h: l.h }; if (trimmed) out.flags[f.key] = '先頭の桁を除いて読み取りました'; break outer; }
+          if (okRange(f, v)) { a = v; anchor = { x: x1, y: l.cy, h: l.h, wy }; if (trimmed) out.flags[f.key] = '先頭の桁を除いて読み取りました'; break outer; }
         }
       }
     }
@@ -368,6 +389,30 @@ function parseSheet(jpnLines, engLines, height) {
   if (out.values.score == null) {
     const c = N.find(n => /^\d{2,3}100$/.test(n.t) && parseInt(n.t.slice(0, -3)) <= 120);
     if (c) { out.values.score = parseInt(c.t.slice(0, -3)); out.flags.score = '「/100」の形から読み取りました'; }
+  }
+  // 棒グラフの右に書かれた数値（筋肉量）は、棒の長さがバラバラなので切り出し位置をずらして何回も読み、多数決で決める
+  if (out.values.lean == null && anchors.lean && canvas) {
+    setProgress(0.97, '筋肉量を読み取っています…');
+    const f = META.lean;
+    const r = await readBarValue(canvas, anchors.lean.wy ?? anchors.lean.y, f);
+    if (r != null && (!out.values.weight || r < out.values.weight)) { out.values.lean = r; out.flags.lean = '棒グラフの横の数字から読み取りました'; }
+  }
+  // 内臓脂肪レベル: 項目名が崩れて読めないので、「骨格筋量」の少し上にある小さな整数を探す
+  if (out.values.vfl == null && anchors.skeletal) {
+    const an = anchors.skeletal;
+    const c = N.filter(n => /^\d{1,2}$/.test(n.t) && okRange(META.vfl, +n.t) && n.cy > an.y - 200 && n.cy < an.y - 30 && n.cx > an.x - 300 && n.cx < an.x + 400)
+      .sort((p, q) => p.cx - q.cx)[0];
+    if (c) { out.values.vfl = +c.t; out.flags.vfl = '位置から推定した値です'; }
+  }
+  // 骨格筋指数(SMI): 項目名が崩れていても、「骨格筋率」のすぐ下の段にある小数を探す
+  if (out.values.smi == null) {
+    const an = anchors.smmwt || anchors.fmi;
+    if (an) {
+      const lo = anchors.smmwt ? 50 : 100, hi = anchors.smmwt ? 220 : 320;
+      const c = N.filter(n => /\./.test(n.t) && okRange(META.smi, +n.t) && n.cy > an.y + lo && n.cy < an.y + hi && n.cx > an.x - 100)
+        .sort((p, q) => p.cx - q.cx)[0];
+      if (c) { out.values.smi = +c.t; out.flags.smi = '位置から推定した値です'; }
+    }
   }
   // 計算で求められるもの
   const v = out.values;
@@ -398,8 +443,8 @@ $('#photo').onchange = async e => {
     const canvas = await toCanvas(file);
     const jpn = await runOcr(canvas, 'jpn', null, 0.05, 0.55, '項目名を読み取っています…');
     const eng = await runOcr(canvas, 'eng', '0123456789.~()-', 0.6, 0.38, '数字を読み取っています…');
+    const res = await parseSheet(jpn, eng, goals.height, canvas);
     setProgress(1, '読み取り完了');
-    const res = parseSheet(jpn, eng, goals.height);
     const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     const flags = { ...res.flags };
     const rec = { at: res.at || d.toISOString().slice(0, 16), values: Object.fromEntries(Object.entries(res.values).filter(([, v]) => v != null)), ranges: {} };
