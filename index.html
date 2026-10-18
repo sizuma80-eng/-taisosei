@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>体組成ノート</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><h1 id="title">体組成ノート</h1></header>
+
+<main>
+  <!-- 推移 -->
+  <section id="tab-trend" class="tab active">
+    <div id="trendEmpty" class="empty" hidden>
+      まだ記録がありません。<br>「記録」からInBodyの用紙の写真を読み込んでください。
+    </div>
+    <div id="trendBody">
+      <div class="chips" id="metricChips"></div>
+      <div class="seg" id="modeSeg">
+        <button data-mode="day" class="on">日別</button>
+        <button data-mode="month">月別</button>
+        <button data-mode="year">年別</button>
+      </div>
+      <div class="row">
+        <label class="sel">期間
+          <select id="rangeSel">
+            <option value="1">1か月</option>
+            <option value="3">3か月</option>
+            <option value="6">半年</option>
+            <option value="12">1年</option>
+            <option value="0" selected>すべて</option>
+          </select>
+        </label>
+        <label class="sel">項目
+          <select id="metricSel"></select>
+        </label>
+      </div>
+      <div class="cards" id="cards"></div>
+      <div class="chartbox"><canvas id="chart"></canvas></div>
+      <p class="legend" id="legend"></p>
+      <table class="tbl" id="trendTable"></table>
+    </div>
+  </section>
+
+  <!-- 記録 -->
+  <section id="tab-add" class="tab">
+    <div class="panel">
+      <h2>写真から読み取る</h2>
+      <p class="hint">InBodyの用紙を、なるべく正面から明るい場所で撮ると読み取りやすいです。読み取りには30秒〜1分ほどかかります。写真はスマホの外に送られません。</p>
+      <label class="btn primary big" for="photo">写真を撮る / 選ぶ</label>
+      <input type="file" id="photo" accept="image/*" hidden>
+      <button class="btn" id="manualBtn">写真なしで手入力する</button>
+      <div id="progress" hidden>
+        <div class="bar"><div id="barFill"></div></div>
+        <p id="progressText" class="hint"></p>
+      </div>
+    </div>
+    <form id="form" class="panel" hidden>
+      <h2 id="formTitle">読み取り結果の確認</h2>
+      <p class="hint" id="formHint"></p>
+      <label class="fld wide">測定日時
+        <input type="datetime-local" id="f_at" required>
+      </label>
+      <div class="grid" id="fieldGrid"></div>
+      <details id="segDetails"><summary>部位別（任意）</summary><div class="grid" id="segGrid"></div></details>
+      <label class="fld wide">メモ
+        <input type="text" id="f_memo" placeholder="食事・運動など">
+      </label>
+      <div class="row">
+        <button type="submit" class="btn primary">保存する</button>
+        <button type="button" class="btn" id="cancelBtn">やめる</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- 履歴 -->
+  <section id="tab-list" class="tab">
+    <div id="listEmpty" class="empty" hidden>記録はまだありません。</div>
+    <ul id="recList" class="reclist"></ul>
+  </section>
+
+  <!-- 設定 -->
+  <section id="tab-set" class="tab">
+    <div class="panel">
+      <h2>身長</h2>
+      <p class="hint">BMIが読み取れなかったときの計算に使います。</p>
+      <label class="fld wide">身長（cm）<input type="number" step="any" inputmode="decimal" id="heightIn"></label>
+    </div>
+    <div class="panel">
+      <h2>目標値</h2>
+      <p class="hint">グラフに点線で表示されます。空欄なら表示しません。</p>
+      <div class="grid" id="goalGrid"></div>
+      <button class="btn primary" id="goalSave">目標を保存</button>
+    </div>
+    <div class="panel">
+      <h2>バックアップ</h2>
+      <p class="hint">データはこのスマホの中だけに保存されています。ブラウザのデータを消したり機種変更をすると消えるので、ときどきバックアップを取ってください。</p>
+      <button class="btn" id="backupBtn">バックアップを保存</button>
+      <label class="btn" for="restoreFile">バックアップから復元</label>
+      <input type="file" id="restoreFile" accept="application/json,.json" hidden>
+      <p class="hint" id="backupMsg"></p>
+    </div>
+    <div class="panel">
+      <h2>データを全部消す</h2>
+      <button class="btn danger" id="wipeBtn">すべての記録を削除</button>
+    </div>
+  </section>
+</main>
+
+<nav class="nav">
+  <button data-tab="trend" class="on"><span>📈</span>推移</button>
+  <button data-tab="add"><span>📷</span>記録</button>
+  <button data-tab="list"><span>📋</span>履歴</button>
+  <button data-tab="set"><span>⚙️</span>設定</button>
+</nav>
+
+<script src="lib/chart.umd.min.js"></script>
+<script src="lib/tesseract.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
