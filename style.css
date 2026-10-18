@@ -63,6 +63,7 @@ select, input[type=text], input[type=number], input[type=datetime-local] {
 .fld.wide { grid-column: span 2; margin: 8px 0; }
 .fld input.flag { background: var(--warn); border-color: var(--warn-line); }
 .fld .note { color: var(--warn-line); font-size: 11px; }
+.fld .note.info { color: var(--sub); }
 details { margin: 8px 0; } summary { padding: 8px 0; color: var(--accent); font-size: 14px; }
 .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 12px; }
 #barFill { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
